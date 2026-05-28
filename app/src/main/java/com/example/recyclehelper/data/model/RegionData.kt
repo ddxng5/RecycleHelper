@@ -56,4 +56,7 @@ object RegionData {
         ),
         "제주특별자치도" to listOf("서귀포시", "제주시")
     )
+
+    const val DEFAULT_CITY = "서울특별시"
+    const val DEFAULT_DISTRICT = "강남구"
 }

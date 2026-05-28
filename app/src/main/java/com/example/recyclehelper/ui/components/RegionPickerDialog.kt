@@ -20,8 +20,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.height
 import com.example.recyclehelper.data.model.RegionData
 import com.example.recyclehelper.ui.theme.GreenPrimary
 
@@ -30,19 +28,21 @@ import com.example.recyclehelper.ui.theme.GreenPrimary
 fun RegionPickerDialog(
     currentCity: String,
     currentDistrict: String,
+    regions: Map<String, List<String>> = RegionData.cities,
     onDismiss: () -> Unit,
     onConfirm: (city: String, district: String) -> Unit
 ) {
-    var selectedCity by remember { mutableStateOf(currentCity) }
-    var selectedDistrict by remember { mutableStateOf(currentDistrict) }
+    val safeCity = currentCity.takeIf { it in regions } ?: regions.keys.firstOrNull().orEmpty()
+    var selectedCity by remember(currentCity, regions) { mutableStateOf(safeCity) }
+    var selectedDistrict by remember(currentDistrict, regions) { mutableStateOf(currentDistrict) }
     var cityExpanded by remember { mutableStateOf(false) }
     var districtExpanded by remember { mutableStateOf(false) }
 
-    val districts = RegionData.cities[selectedCity] ?: emptyList()
+    val districts = regions[selectedCity].orEmpty()
 
     LaunchedEffect(selectedCity) {
         if (selectedDistrict !in districts) {
-            selectedDistrict = districts.firstOrNull() ?: ""
+            selectedDistrict = districts.firstOrNull().orEmpty()
         }
     }
 
@@ -69,7 +69,7 @@ fun RegionPickerDialog(
                         expanded = cityExpanded,
                         onDismissRequest = { cityExpanded = false }
                     ) {
-                        RegionData.cities.keys.forEach { city ->
+                        regions.keys.forEach { city ->
                             DropdownMenuItem(
                                 text = { Text(city) },
                                 onClick = {

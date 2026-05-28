@@ -39,8 +39,6 @@ enum class Tab(val label: String, val icon: ImageVector) {
 @Composable
 fun MainScreen() {
     var current by remember { mutableStateOf(Tab.SEARCH) }
-
-    // ViewModel 을 여기서 만들어 검색·설정 화면에 공유
     val searchViewModel: SearchViewModel = viewModel()
 
     Scaffold(
@@ -64,8 +62,12 @@ fun MainScreen() {
         ) {
             when (current) {
                 Tab.SEARCH -> SearchScreen(viewModel = searchViewModel)
-                Tab.TODAY -> Box(Modifier.verticalScroll(rememberScrollState())) { TodayScreen() }
-                Tab.SCHEDULE -> Box(Modifier.verticalScroll(rememberScrollState())) { ScheduleScreen() }
+                Tab.TODAY -> Box(Modifier.verticalScroll(rememberScrollState())) {
+                    TodayScreen(viewModel = searchViewModel)
+                }
+                Tab.SCHEDULE -> Box(Modifier.verticalScroll(rememberScrollState())) {
+                    ScheduleScreen(viewModel = searchViewModel)
+                }
                 Tab.SETTINGS -> Box(Modifier.verticalScroll(rememberScrollState())) {
                     SettingsScreen(searchViewModel = searchViewModel)
                 }

@@ -50,6 +50,7 @@ fun SettingsScreen(searchViewModel: SearchViewModel) {
         RegionPickerDialog(
             currentCity = uiState.selectedCity,
             currentDistrict = uiState.selectedDistrict,
+            regions = uiState.availableRegions,
             onDismiss = { showRegionPicker = false },
             onConfirm = { city, district ->
                 searchViewModel.updateRegion(city, district)
@@ -58,12 +59,14 @@ fun SettingsScreen(searchViewModel: SearchViewModel) {
         )
     }
 
-    Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp)
+    ) {
         Text("설정", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = TextPrimary)
         Spacer(Modifier.height(16.dp))
 
-        // ── 지역 설정 ──
         SettingCard(onClick = { showRegionPicker = true }) {
             Icon(Icons.Filled.LocationOn, null, tint = GreenPrimary)
             Spacer(Modifier.width(12.dp))
@@ -80,7 +83,6 @@ fun SettingsScreen(searchViewModel: SearchViewModel) {
 
         Spacer(Modifier.height(8.dp))
 
-        // ── 알림 설정 ──
         SettingCard(onClick = null) {
             Icon(Icons.Filled.Notifications, null, tint = GreenPrimary)
             Spacer(Modifier.width(12.dp))
@@ -95,7 +97,6 @@ fun SettingsScreen(searchViewModel: SearchViewModel) {
         HorizontalDivider()
         Spacer(Modifier.height(16.dp))
 
-        // ── 즐겨찾기 목록 ──
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Filled.Star, null, tint = GreenPrimary)
             Spacer(Modifier.width(8.dp))
@@ -107,7 +108,7 @@ fun SettingsScreen(searchViewModel: SearchViewModel) {
 
         if (favoriteItems.isEmpty()) {
             Text(
-                "아직 즐겨찾기한 품목이 없어요.\n검색 결과에서 ☆ 를 눌러 추가해보세요!",
+                "아직 즐겨찾기한 항목이 없어요\n검색 결과에서 별을 눌러 추가해보세요",
                 color = TextSecondary,
                 fontSize = 14.sp,
                 modifier = Modifier.padding(vertical = 20.dp)
