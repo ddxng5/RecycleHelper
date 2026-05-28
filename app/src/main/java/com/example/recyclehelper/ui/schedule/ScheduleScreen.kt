@@ -52,6 +52,7 @@ import com.example.recyclehelper.ui.theme.CardBackground
 import com.example.recyclehelper.ui.theme.GreenPrimary
 import com.example.recyclehelper.ui.theme.TextPrimary
 import com.example.recyclehelper.ui.theme.TextSecondary
+import com.example.recyclehelper.util.formatDays
 import java.time.DayOfWeek
 import java.time.format.TextStyle
 import java.util.Locale
@@ -285,7 +286,7 @@ private fun DayCard(day: DayOfWeek, items: List<WasteTypeInfo>, onDetail: (Strin
                             onDetail(
                                 "${day.getDisplayName(TextStyle.FULL, Locale.KOREAN)} ${info.category.label}",
                                 listOf(
-                                    "배출 요일: ${info.dow.ifBlank { "확인 필요" }}",
+                                    "배출 요일: ${formatDays(info.dow).ifBlank { "확인 필요" }}",
                                     "배출 시간: ${info.timeRange}",
                                     "",
                                     info.method
@@ -383,7 +384,7 @@ private fun UncollectedSection(zone: ZoneInfo) {
             Spacer(Modifier.width(8.dp))
             Column {
                 Text("미수거일", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color(0xFFE53935))
-                Text(zone.uncollectedDay.replace("+", ", "), fontSize = 13.sp, color = TextSecondary)
+                Text(formatDays(zone.uncollectedDay), fontSize = 13.sp, color = TextSecondary)
             }
         }
     }
