@@ -52,6 +52,7 @@ import com.example.recyclehelper.ui.theme.GreenLight
 import com.example.recyclehelper.ui.theme.GreenPrimary
 import com.example.recyclehelper.ui.theme.TextPrimary
 import com.example.recyclehelper.ui.theme.TextSecondary
+import com.example.recyclehelper.util.formatDays
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.format.TextStyle
@@ -100,6 +101,30 @@ fun TodayScreen(viewModel: SearchViewModel) {
         )
         Spacer(Modifier.height(12.dp))
 
+        if (!uiState.isRegionConfigured) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = GreenLight),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        "내 지역이 아직 설정되지 않았어요",
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary,
+                        fontSize = 15.sp
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "위 지역 칩을 눌러 우리 동네를 선택해 주세요. 기본값(${uiState.selectedCity} ${uiState.selectedDistrict})으로 정보를 보여드립니다.",
+                        color = TextSecondary,
+                        fontSize = 13.sp
+                    )
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+        }
+
         if (uiState.isLoading) {
             CircularProgressIndicator(
                 color = GreenPrimary,
@@ -107,12 +132,20 @@ fun TodayScreen(viewModel: SearchViewModel) {
                     .size(36.dp)
                     .align(Alignment.CenterHorizontally)
             )
+            Text(
+                "데이터를 불러오는 중...",
+                color = TextSecondary,
+                fontSize = 13.sp,
+                modifier = Modifier
+                    .padding(top = 8.dp)
+                    .align(Alignment.CenterHorizontally)
+            )
             return@Column
         }
 
         if (zone == null) {
             Text(
-                uiState.errorMessage ?: "데이터가 없습니다",
+                uiState.errorMessage ?: "검색 결과가 없습니다",
                 color = TextSecondary,
                 modifier = Modifier.padding(top = 16.dp)
             )
@@ -309,7 +342,7 @@ private fun MethodRow(info: WasteTypeInfo, onDetail: (String, String) -> Unit) {
             onDetail(
                 info.category.label,
                 listOf(
-                    "배출 요일: ${info.dow.ifBlank { "확인 필요" }}",
+                    "배출 요일: ${formatDays(info.dow).ifBlank { "확인 필요" }}",
                     "배출 시간: ${info.timeRange}",
                     "",
                     info.method
@@ -325,7 +358,7 @@ private fun MethodRow(info: WasteTypeInfo, onDetail: (String, String) -> Unit) {
                     .background(info.category.color)
             )
             Text(info.category.label, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = TextPrimary)
-            Text("${info.dow}  ${info.timeRange}", fontSize = 12.sp, color = TextSecondary)
+            Text("${formatDays(info.dow)}  ${info.timeRange}", fontSize = 12.sp, color = TextSecondary)
         }
         Spacer(Modifier.height(2.dp))
         Text(info.method, fontSize = 12.sp, color = TextSecondary, modifier = Modifier.padding(start = 18.dp))
@@ -395,7 +428,7 @@ private fun ContactCard(zone: ZoneInfo) {
             if (zone.uncollectedDay.isNotBlank()) {
                 Text("미수거일", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = TextPrimary)
                 Spacer(Modifier.height(4.dp))
-                Text(zone.uncollectedDay.replace("+", ", "), fontSize = 13.sp, color = Color(0xFFE53935))
+                Text(formatDays(zone.uncollectedDay), fontSize = 13.sp, color = Color(0xFFE53935))
             }
             if (zone.deptTel.isNotBlank()) {
                 if (zone.uncollectedDay.isNotBlank()) Spacer(Modifier.height(10.dp))
