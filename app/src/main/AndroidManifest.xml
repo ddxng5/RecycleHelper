@@ -12,10 +12,10 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.RecycleHelper">
 
+        <!-- 로그인 화면 — LAUNCHER Activity -->
         <activity
-            android:name=".MainActivity"
+            android:name=".ui.auth.LoginActivity"
             android:exported="true"
-            android:launchMode="singleTop"
             android:theme="@style/Theme.RecycleHelper">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -23,6 +23,20 @@
             </intent-filter>
         </activity>
 
+        <!-- 회원가입 화면 -->
+        <activity
+            android:name=".ui.auth.RegisterActivity"
+            android:exported="false"
+            android:theme="@style/Theme.RecycleHelper" />
+
+        <!-- 메인 화면 (로그인 후 진입) -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:theme="@style/Theme.RecycleHelper" />
+
+        <!-- 매일 반복 알림 수신 -->
         <receiver
             android:name=".notification.AlarmReceiver"
             android:exported="false">
@@ -30,6 +44,17 @@
                 <action android:name="com.example.recyclehelper.action.DAILY_REMINDER" />
             </intent-filter>
         </receiver>
+
+        <!-- 부팅 후 알람 재예약 -->
+        <receiver
+            android:name=".notification.BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
+
     </application>
 
 </manifest>

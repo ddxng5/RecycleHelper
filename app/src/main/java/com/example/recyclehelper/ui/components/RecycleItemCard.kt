@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
@@ -163,19 +165,28 @@ fun RecycleItemCard(
             if (!regionScheduleText.isNullOrBlank()) {
                 Spacer(Modifier.height(12.dp))
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
+                    // Top 정렬 → 텍스트가 줄바꿈돼도 아이콘이 첫 줄 상단에 고정
+                    verticalAlignment = Alignment.Top,
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(GreenPrimary.copy(alpha = 0.08f), RoundedCornerShape(10.dp))
                         .padding(horizontal = 12.dp, vertical = 8.dp)
                 ) {
-                    Icon(Icons.Filled.CalendarMonth, null, tint = GreenPrimary)
-                    Spacer(Modifier.height(0.dp))
+                    Icon(
+                        Icons.Filled.CalendarMonth,
+                        contentDescription = null,
+                        tint = GreenPrimary,
+                        modifier = Modifier
+                            .size(18.dp)
+                            .padding(top = 1.dp)   // 텍스트 베이스라인과 시각적 맞춤
+                    )
+                    Spacer(Modifier.width(6.dp))   // height → width 수정
                     Text(
-                        "  $regionScheduleText",
+                        regionScheduleText,        // 앞 공백 제거
                         color = GreenPrimary,
                         fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium
+                        fontWeight = FontWeight.Medium,
+                        lineHeight = 18.sp
                     )
                 }
             }
@@ -198,9 +209,10 @@ private fun SpecialWasteWarning(item: RecycleItem) {
             .border(1.dp, Color(0xFFE53935).copy(alpha = 0.3f), RoundedCornerShape(10.dp))
             .padding(horizontal = 12.dp, vertical = 10.dp)
     ) {
-        Icon(Icons.Filled.Warning, null, tint = Color(0xFFE53935))
-        Spacer(Modifier.height(0.dp))
-        Column(modifier = Modifier.padding(start = 8.dp)) {
+        Icon(Icons.Filled.Warning, null, tint = Color(0xFFE53935),
+            modifier = Modifier.size(18.dp).align(Alignment.Top))
+        Spacer(Modifier.width(8.dp))
+        Column {
             Text(
                 "특수 배출 안내",
                 color = Color(0xFFE53935),

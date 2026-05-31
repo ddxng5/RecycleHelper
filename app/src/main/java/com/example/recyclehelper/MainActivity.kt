@@ -7,8 +7,10 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import com.example.recyclehelper.data.auth.UserSessionManager
 import com.example.recyclehelper.data.local.WasteItemStore
 import com.example.recyclehelper.notification.NotificationHelper
+import com.example.recyclehelper.ui.auth.LoginActivity
 import com.example.recyclehelper.ui.theme.RecycleHelperTheme
 
 class MainActivity : ComponentActivity() {
@@ -21,12 +23,29 @@ class MainActivity : ComponentActivity() {
         NotificationHelper.ensureChannel(this)
         enableEdgeToEdge()
 
+        // 세션 확인 — 로그인 안 된 경우 LoginActivity로 전환
+        if (!UserSessionManager(this).isLoggedIn()) {
+            startActivity(Intent(this, LoginActivity::class.java))
+            finish()
+            return
+        }
+
         initialTabState.value = resolveTab(intent)
 
         setContent {
             RecycleHelperTheme {
                 val tab by initialTabState
-                MainScreen(initialTab = tab)
+                MainScreen(
+                    initialTab = tab,
+                    onLogout = {
+                        NotificationHelper.cancelDaily(this)
+                        UserSessionManager(this).logout()
+                        startActivity(
+                            Intent(this, LoginActivity::class.java)
+                                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_NEW_TASK)
+                        )
+                    }
+                )
             }
         }
     }
@@ -37,7 +56,10 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun resolveTab(intent: Intent?): Tab {
-        val targetTab = intent?.getStringExtra(NotificationHelper.EXTRA_TARGET_TAB)
-        return if (targetTab == NotificationHelper.TAB_TODAY) Tab.TODAY else Tab.SEARCH
+        return when (intent?.getStringExtra(NotificationHelper.EXTRA_TARGET_TAB)) {
+            NotificationHelper.TAB_TODAY    -> Tab.TODAY
+            NotificationHelper.TAB_CALENDAR -> Tab.CALENDAR
+            else -> Tab.SEARCH
+        }
     }
 }

@@ -5,6 +5,7 @@ import com.example.recyclehelper.data.model.BulkWasteInfo
 import com.example.recyclehelper.data.model.Category
 import com.example.recyclehelper.data.model.WasteTypeInfo
 import com.example.recyclehelper.data.model.ZoneInfo
+import android.util.Log
 import com.example.recyclehelper.data.remote.RetrofitClient
 import com.example.recyclehelper.data.remote.dto.WasteItemDto
 import java.time.DayOfWeek
@@ -12,65 +13,111 @@ import java.time.DayOfWeek
 class WasteRepository {
 
     private val api = RetrofitClient.wasteApi
-    private val fullDataRows = 12_000
+
+    /**
+     * 공공데이터 API 는 한 번 요청에 처리할 수 있는 건수 제한이 있다.
+     * 1,000건씩 페이지를 나눠 totalCount 에 도달할 때까지 전부 수집한다.
+     */
+    private val PAGE_SIZE = 1_000
+    private val TAG = "WasteRepository"
 
     suspend fun getAvailableRegions(): Map<String, List<String>> {
         return try {
-            val response = api.getWasteInfo(
-                serviceKey = BuildConfig.WASTE_API_KEY,
-                numOfRows = fullDataRows
-            )
+            val allItems = mutableListOf<WasteItemDto>()
+            var pageNo = 1
+            var totalCount = -1
 
-            val resultCode = response.response.header.resultCode.trimStart('0').ifEmpty { "0" }
-            val isSuccess = resultCode == "0" || response.response.header.resultMsg.contains("정상")
-            if (!isSuccess) return emptyMap()
+            while (true) {
+                val response = api.getWasteInfo(
+                    serviceKey = BuildConfig.WASTE_API_KEY,
+                    pageNo    = pageNo,
+                    numOfRows = PAGE_SIZE
+                )
 
-            response.response.body.items?.item
-                .orEmpty()
+                val resultCode = response.response.header.resultCode.trimStart('0').ifEmpty { "0" }
+                val isSuccess  = resultCode == "0" ||
+                        response.response.header.resultMsg.contains("정상")
+                if (!isSuccess) break
+
+                // 첫 응답에서 전체 건수 확인
+                if (totalCount < 0) {
+                    totalCount = response.response.body.totalCount
+                    Log.d(TAG, "getAvailableRegions: totalCount=$totalCount")
+                }
+
+                val pageItems = response.response.body.items?.item.orEmpty()
+                if (pageItems.isEmpty()) break
+
+                allItems += pageItems
+                Log.d(TAG, "getAvailableRegions: page=$pageNo fetched=${pageItems.size} accumulated=${allItems.size}")
+
+                if (allItems.size >= totalCount) break
+                pageNo++
+            }
+
+            allItems
                 .mapNotNull { item ->
-                    val city = item.ctpvNm?.trim().orEmpty()
+                    val city     = item.ctpvNm?.trim().orEmpty()
                     val district = item.sggNm?.trim().orEmpty()
                     if (city.isBlank() || district.isBlank()) null else city to district
                 }
                 .groupBy({ it.first }, { it.second })
                 .mapValues { (_, districts) -> districts.distinct().sorted() }
                 .toSortedMap()
+                .also { Log.d(TAG, "getAvailableRegions: cities=${it.keys}") }
+
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "getAvailableRegions failed", e)
             emptyMap()
         }
     }
 
     suspend fun getZones(cityName: String, districtName: String): List<ZoneInfo> {
         return try {
-            val response = api.getWasteInfo(
-                serviceKey = BuildConfig.WASTE_API_KEY,
-                cityName = cityName,
-                districtName = districtName,
-                numOfRows = fullDataRows
-            )
+            val allItems = mutableListOf<WasteItemDto>()
+            var pageNo = 1
+            var totalCount = -1
 
-            val resultCode = response.response.header.resultCode.trimStart('0').ifEmpty { "0" }
-            val isSuccess = resultCode == "0" || response.response.header.resultMsg.contains("정상")
-            if (!isSuccess) return emptyList()
+            while (true) {
+                val response = api.getWasteInfo(
+                    serviceKey   = BuildConfig.WASTE_API_KEY,
+                    cityName     = cityName,
+                    districtName = districtName,
+                    pageNo       = pageNo,
+                    numOfRows    = PAGE_SIZE
+                )
 
-            val allItems = response.response.body.items?.item ?: return emptyList()
-            val filtered = allItems.filter { item ->
-                item.ctpvNm.isSameRegionName(cityName) && item.sggNm.isSameRegionName(districtName)
+                val resultCode = response.response.header.resultCode.trimStart('0').ifEmpty { "0" }
+                val isSuccess  = resultCode == "0" ||
+                        response.response.header.resultMsg.contains("정상")
+                if (!isSuccess) break
+
+                if (totalCount < 0) {
+                    totalCount = response.response.body.totalCount
+                    Log.d(TAG, "getZones[$cityName $districtName]: totalCount=$totalCount")
+                }
+
+                val pageItems = response.response.body.items?.item.orEmpty()
+                if (pageItems.isEmpty()) break
+
+                allItems += pageItems
+                if (allItems.size >= totalCount) break
+                pageNo++
             }
 
-            filtered.map { item ->
-                toZoneInfo(item, cityName, districtName)
-            }.distinctBy { zone ->
-                listOf(
-                    zone.regionName,
-                    zone.zoneName,
-                    zone.collectionType,
-                    zone.collectionPlace
-                ).joinToString("|")
-            }
+            allItems
+                .filter { item ->
+                    item.ctpvNm.isSameRegionName(cityName) &&
+                    item.sggNm.isSameRegionName(districtName)
+                }
+                .map { toZoneInfo(it, cityName, districtName) }
+                .distinctBy { zone ->
+                    listOf(zone.regionName, zone.zoneName,
+                           zone.collectionType, zone.collectionPlace)
+                        .joinToString("|")
+                }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "getZones failed", e)
             emptyList()
         }
     }

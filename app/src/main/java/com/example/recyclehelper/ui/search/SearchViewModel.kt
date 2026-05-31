@@ -3,8 +3,9 @@ package com.example.recyclehelper.ui.search
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.recyclehelper.data.local.WasteItemStore
+import com.example.recyclehelper.data.auth.UserSessionManager
 import com.example.recyclehelper.data.mock.MockData
+import com.example.recyclehelper.data.model.DisposalRecord
 import com.example.recyclehelper.data.model.RecycleItem
 import com.example.recyclehelper.data.model.RegionData
 import com.example.recyclehelper.data.model.WasteCategory
@@ -15,6 +16,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.time.LocalDate
+import java.time.YearMonth
 
 data class SearchUiState(
     val query: String = "",
@@ -22,7 +25,7 @@ data class SearchUiState(
     val favorites: Set<String> = emptySet(),
     val isLoading: Boolean = false,
     val isRegionLoading: Boolean = false,
-    val availableRegions: Map<String, List<String>> = RegionData.cities,
+    val availableRegions: Map<String, List<String>> = emptyMap(),
     val zones: List<ZoneInfo> = emptyList(),
     val selectedZoneIndex: Int = 0,
     val errorMessage: String? = null,
@@ -31,11 +34,19 @@ data class SearchUiState(
     val isRegionConfigured: Boolean = false,
     val recentQueries: List<String> = emptyList(),
     val notifyEnabled: Boolean = false,
+    val notifyHour: Int = 20,
+    val notifyMinute: Int = 0,
+    val notifyAdvanceDays: Int = 0,
+    val notifyWasteTypes: Set<String> = PrefsManager.DEFAULT_NOTIFY_TYPES,
     val selectedWasteCategory: WasteCategory = WasteCategory.ALL,
     /** 검색 결과가 비었을 때 보여줄 추천 검색어 */
     val recommendedQueries: List<String> = DEFAULT_RECOMMENDED_QUERIES,
     /** 검색이 한 번도 호출되지 않은 상태(첫 진입). 카테고리 필터만 적용한 대표 품목 보여줄 때 사용 */
-    val hasNoMatch: Boolean = false
+    val hasNoMatch: Boolean = false,
+    /** 배출 완료 기록 전체 */
+    val disposalRecords: List<DisposalRecord> = emptyList(),
+    /** 이번 달 검색 횟수 */
+    val monthlySearchCount: Int = 0
 ) {
     /** 사용자가 요청한 별칭. zones 를 그대로 노출. */
     val regionItems: List<ZoneInfo> get() = zones
@@ -50,15 +61,13 @@ private val DEFAULT_RECOMMENDED_QUERIES = listOf(
 class SearchViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = WasteRepository()
-    private val prefs = PrefsManager(application)
+    // userId 기반으로 사용자별 PrefsManager 를 생성 → 데이터 자동 격리
+    private val prefs = PrefsManager(application, UserSessionManager(application).getCurrentUserId())
 
     private val _uiState = MutableStateFlow(SearchUiState())
     val uiState: StateFlow<SearchUiState> = _uiState.asStateFlow()
 
     init {
-        // 앱 시작 시 한 번만 품목 DB 로드 (이미 MainActivity 에서 호출하지만 안전망)
-        WasteItemStore.ensureLoaded(application)
-
         val savedCity = prefs.selectedCity
         val savedDistrict = prefs.selectedDistrict
         val configured = !savedCity.isNullOrBlank() && !savedDistrict.isNullOrBlank()
@@ -66,16 +75,23 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
         val city = savedCity ?: RegionData.DEFAULT_CITY
         val district = savedDistrict ?: RegionData.DEFAULT_DISTRICT
 
+        val ym = YearMonth.now().toString()          // "2025-05"
         _uiState.value = _uiState.value.copy(
             selectedCity = city,
             selectedDistrict = district,
             isRegionConfigured = configured,
             favorites = prefs.favorites,
             recentQueries = prefs.recentQueries,
-            notifyEnabled = prefs.notifyEnabled
+            notifyEnabled = prefs.notifyEnabled,
+            notifyHour = prefs.notifyHour,
+            notifyMinute = prefs.notifyMinute,
+            notifyAdvanceDays = prefs.notifyAdvanceDays,
+            notifyWasteTypes = prefs.notifyWasteTypes,
+            disposalRecords = prefs.disposalRecords,
+            monthlySearchCount = prefs.getMonthlySearchCount(ym)
         )
 
-        // 카테고리 = ALL, query = "" 상태이므로 첫 화면은 빈 결과 + 추천 검색어 표시
+        // 캐시 → 즉시 표시, 백그라운드에서 API 갱신
         loadAvailableRegions()
         loadRegionInfo(city, district)
     }
@@ -92,7 +108,12 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
         val updated = (listOf(trimmed) + _uiState.value.recentQueries.filter { it != trimmed })
             .take(PrefsManager.MAX_RECENT)
         prefs.recentQueries = updated
-        _uiState.value = _uiState.value.copy(recentQueries = updated)
+        val ym = YearMonth.now().toString()
+        prefs.incrementMonthlySearchCount(ym)
+        _uiState.value = _uiState.value.copy(
+            recentQueries = updated,
+            monthlySearchCount = prefs.getMonthlySearchCount(ym)
+        )
     }
 
     fun selectWasteCategory(category: WasteCategory) {
@@ -141,6 +162,28 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
         _uiState.value = _uiState.value.copy(notifyEnabled = enabled)
     }
 
+    fun setNotifyHour(hour: Int) {
+        prefs.notifyHour = hour
+        _uiState.value = _uiState.value.copy(notifyHour = hour)
+    }
+
+    fun setNotifyMinute(minute: Int) {
+        prefs.notifyMinute = minute
+        _uiState.value = _uiState.value.copy(notifyMinute = minute)
+    }
+
+    fun setNotifyAdvanceDays(days: Int) {
+        prefs.notifyAdvanceDays = days
+        _uiState.value = _uiState.value.copy(notifyAdvanceDays = days)
+    }
+
+    fun toggleNotifyWasteType(type: String) {
+        val current = _uiState.value.notifyWasteTypes.toMutableSet()
+        if (current.contains(type)) current.remove(type) else current.add(type)
+        prefs.notifyWasteTypes = current
+        _uiState.value = _uiState.value.copy(notifyWasteTypes = current)
+    }
+
     /** 사용자가 요청한 시그니처. 내부적으로 getZones 를 호출한다. */
     fun loadRegionInfo(city: String, district: String) = loadZones(city, district)
 
@@ -169,36 +212,110 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    /**
+     * 지역 목록 로드 전략:
+     *  1) SharedPreferences 캐시가 있으면 → 즉시 UI 반영 (피커 바로 열림)
+     *  2) 캐시가 없거나 24시간 이상 지났으면 → API 호출 (백그라운드)
+     *  3) API 결과가 오면 캐시 저장 후 UI 갱신
+     *
+     * 결과적으로 두 번째 실행부터는 피커가 즉시 열리고,
+     * 내용은 백그라운드에서 최신 API 데이터로 조용히 갱신된다.
+     */
     private fun loadAvailableRegions() {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isRegionLoading = true)
-            val regions = repository.getAvailableRegions()
-            if (regions.isEmpty()) {
+            // ── 1단계: 캐시 확인 ──────────────────────────────────
+            val cached = prefs.cachedRegions
+            val cacheAge = System.currentTimeMillis() - prefs.regionsCacheTimestamp
+            val cacheValid = cached.isNotEmpty() && cacheAge < PrefsManager.CACHE_TTL_MS
+
+            if (cached.isNotEmpty()) {
+                // 캐시가 있으면 즉시 화면에 표시 (로딩 스피너 없음)
+                applyRegions(cached, showLoading = false)
+            }
+
+            if (cacheValid) return@launch   // 캐시가 유효하면 API 호출 생략
+
+            // ── 2단계: API 호출 (캐시 없거나 만료됨) ───────────────
+            if (cached.isEmpty()) {
+                // 처음 실행: 스피너 표시
+                _uiState.value = _uiState.value.copy(isRegionLoading = true)
+            }
+
+            val fresh = repository.getAvailableRegions()
+            if (fresh.isEmpty()) {
                 _uiState.value = _uiState.value.copy(isRegionLoading = false)
                 return@launch
             }
 
-            val current = _uiState.value
-            val currentDistricts = regions[current.selectedCity].orEmpty()
-            if (current.selectedDistrict in currentDistricts) {
-                _uiState.value = current.copy(
-                    availableRegions = regions,
-                    isRegionLoading = false
-                )
-            } else {
-                val city = regions.keys.first()
-                val district = regions.getValue(city).first()
-                _uiState.value = current.copy(
-                    availableRegions = regions,
-                    selectedCity = city,
-                    selectedDistrict = district,
-                    selectedZoneIndex = 0,
-                    zones = emptyList(),
-                    isRegionLoading = false
-                )
-                loadRegionInfo(city, district)
-            }
+            // ── 3단계: 캐시 저장 + UI 갱신 ────────────────────────
+            prefs.cachedRegions = fresh
+            prefs.regionsCacheTimestamp = System.currentTimeMillis()
+            applyRegions(fresh, showLoading = false)
         }
+    }
+
+    /** regions 를 uiState 에 반영. 저장된 지역이 목록에 없으면 첫 번째 지역으로 대체. */
+    private fun applyRegions(regions: Map<String, List<String>>, showLoading: Boolean) {
+        val current = _uiState.value
+        val districtOk = regions[current.selectedCity]?.contains(current.selectedDistrict) == true
+
+        if (districtOk) {
+            _uiState.value = current.copy(
+                availableRegions = regions,
+                isRegionLoading = showLoading
+            )
+        } else {
+            val firstCity     = regions.keys.first()
+            val firstDistrict = regions.getValue(firstCity).first()
+            prefs.selectedCity     = firstCity
+            prefs.selectedDistrict = firstDistrict
+            _uiState.value = current.copy(
+                availableRegions = regions,
+                selectedCity     = firstCity,
+                selectedDistrict = firstDistrict,
+                selectedZoneIndex = 0,
+                zones = emptyList(),
+                isRegionLoading = showLoading
+            )
+            loadRegionInfo(firstCity, firstDistrict)
+        }
+    }
+
+    /**
+     * 배출 완료 토글.
+     * 이미 기록이 있으면 취소, 없으면 추가.
+     * @return true = 완료로 전환, false = 취소로 전환
+     */
+    fun toggleDisposal(date: LocalDate, wasteType: String): Boolean {
+        val dateStr = date.toString()   // "2025-05-31"
+        val id = DisposalRecord.makeId(dateStr, wasteType)
+        val current = _uiState.value.disposalRecords.toMutableList()
+        val existing = current.indexOfFirst { it.id == id }
+
+        val isNowCompleted: Boolean
+        if (existing >= 0) {
+            current.removeAt(existing)
+            isNowCompleted = false
+        } else {
+            current.add(
+                DisposalRecord(
+                    id = id,
+                    date = dateStr,
+                    wasteType = wasteType,
+                    city = _uiState.value.selectedCity,
+                    district = _uiState.value.selectedDistrict
+                )
+            )
+            isNowCompleted = true
+        }
+        prefs.disposalRecords = current
+        _uiState.value = _uiState.value.copy(disposalRecords = current)
+        return isNowCompleted
+    }
+
+    fun isDisposed(date: LocalDate, wasteType: String): Boolean {
+        val id = DisposalRecord.makeId(date.toString(), wasteType)
+        return _uiState.value.disposalRecords.any { it.id == id }
     }
 
     fun getFavoriteItems(): List<RecycleItem> {

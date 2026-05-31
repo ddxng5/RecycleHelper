@@ -67,6 +67,7 @@ fun SearchScreen(
             currentCity = state.selectedCity,
             currentDistrict = state.selectedDistrict,
             regions = state.availableRegions,
+            isLoading = state.isRegionLoading,
             onDismiss = { showRegionPicker = false },
             onConfirm = { city, district ->
                 viewModel.updateRegion(city, district)
@@ -114,7 +115,7 @@ fun SearchScreen(
                 value = state.query,
                 onValueChange = viewModel::onQueryChange,
                 leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-                placeholder = { Text("페트병, 치킨박스, 건전지...") },
+                placeholder = { Text("검색 물품을 입력해주세요") },
                 singleLine = true,
                 shape = RoundedCornerShape(12.dp),
                 keyboardOptions = KeyboardOptions(
@@ -209,31 +210,46 @@ private fun CategoryFilterRow(
     selected: WasteCategory,
     onSelect: (WasteCategory) -> Unit
 ) {
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    // 10개 카테고리를 5개씩 두 줄로 나눠 화면 너비 안에 완전히 표시
+    val all = WasteCategory.entries
+    val row1 = all.take(5)
+    val row2 = all.drop(5)
+
+    Column(
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
-            .horizontalScroll(rememberScrollState())
+            .fillMaxWidth()
             .padding(horizontal = 16.dp)
     ) {
-        WasteCategory.entries.forEach { cat ->
-            val isSelected = cat == selected
-            val bg = if (isSelected) GreenPrimary else Color.White
-            val fg = if (isSelected) Color.White else GreenPrimary
-            val border = if (isSelected) GreenPrimary else GreenPrimary.copy(alpha = 0.3f)
-            Text(
-                text = cat.label,
-                fontSize = 13.sp,
-                color = fg,
-                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(bg)
-                    .border(1.dp, border, RoundedCornerShape(20.dp))
-                    .clickable { onSelect(cat) }
-                    .padding(horizontal = 14.dp, vertical = 7.dp)
-            )
+        listOf(row1, row2).forEach { row ->
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                row.forEach { cat -> CategoryChip(cat, cat == selected, onSelect) }
+            }
         }
     }
+}
+
+@Composable
+private fun CategoryChip(cat: WasteCategory, isSelected: Boolean, onSelect: (WasteCategory) -> Unit) {
+    val bg     = if (isSelected) GreenPrimary else Color.White
+    val fg     = if (isSelected) Color.White  else GreenPrimary
+    val border = if (isSelected) GreenPrimary else GreenPrimary.copy(alpha = 0.3f)
+    Text(
+        text = cat.label,
+        fontSize = 12.sp,
+        color = fg,
+        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+        modifier = Modifier
+            .clip(RoundedCornerShape(20.dp))
+            .background(bg)
+            .border(1.dp, border, RoundedCornerShape(20.dp))
+            .clickable { onSelect(cat) }
+            .padding(horizontal = 11.dp, vertical = 6.dp)
+    )
 }
 
 @Composable

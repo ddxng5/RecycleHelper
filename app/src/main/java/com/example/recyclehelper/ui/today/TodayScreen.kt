@@ -18,9 +18,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -62,7 +64,8 @@ import java.util.Locale
 fun TodayScreen(viewModel: SearchViewModel) {
     val uiState by viewModel.uiState.collectAsState()
     var showRegionPicker by remember { mutableStateOf(false) }
-    val today = LocalDate.now().dayOfWeek
+    val todayDate = LocalDate.now()
+    val today = todayDate.dayOfWeek
     val todayLabel = today.getDisplayName(TextStyle.FULL, Locale.KOREAN)
     val zone = uiState.zones.getOrNull(uiState.selectedZoneIndex)
     var detailTitle by remember { mutableStateOf<String?>(null) }
@@ -73,6 +76,7 @@ fun TodayScreen(viewModel: SearchViewModel) {
             currentCity = uiState.selectedCity,
             currentDistrict = uiState.selectedDistrict,
             regions = uiState.availableRegions,
+            isLoading = uiState.isRegionLoading,
             onDismiss = { showRegionPicker = false },
             onConfirm = { city, district ->
                 viewModel.updateRegion(city, district)
@@ -181,8 +185,12 @@ fun TodayScreen(viewModel: SearchViewModel) {
                     Text("오늘은 배출 가능한 항목이 없어요", color = TextSecondary)
                 } else {
                     todayItems.forEach { info ->
-                        TodayWasteRow(info)
-                        Spacer(Modifier.height(4.dp))
+                        TodayWasteRow(
+                            info = info,
+                            isCompleted = viewModel.isDisposed(todayDate, info.category.label),
+                            onToggle = { viewModel.toggleDisposal(todayDate, info.category.label) }
+                        )
+                        Spacer(Modifier.height(6.dp))
                     }
                 }
             }
@@ -290,11 +298,20 @@ private fun ZoneTabs(zones: List<ZoneInfo>, selectedIndex: Int, onSelect: (Int) 
 }
 
 @Composable
-private fun TodayWasteRow(info: WasteTypeInfo) {
+private fun TodayWasteRow(
+    info: WasteTypeInfo,
+    isCompleted: Boolean = false,
+    onToggle: () -> Unit = {}
+) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        modifier = Modifier.padding(vertical = 4.dp)
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(
+                if (isCompleted) GreenPrimary.copy(alpha = 0.08f) else Color.Transparent
+            )
+            .padding(vertical = 6.dp, horizontal = 4.dp)
     ) {
         Box(
             modifier = Modifier
@@ -302,8 +319,35 @@ private fun TodayWasteRow(info: WasteTypeInfo) {
                 .clip(CircleShape)
                 .background(info.category.color)
         )
-        Text(info.category.label, fontSize = 16.sp, fontWeight = FontWeight.Medium, color = TextPrimary)
-        Text(info.timeRange, fontSize = 13.sp, color = TextSecondary)
+        Spacer(Modifier.width(10.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(info.category.label, fontSize = 15.sp, fontWeight = FontWeight.Medium, color = TextPrimary)
+            Text(info.timeRange, fontSize = 12.sp, color = TextSecondary)
+        }
+        // 배출 완료 토글 버튼
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .clip(RoundedCornerShape(20.dp))
+                .background(if (isCompleted) GreenPrimary else Color.White)
+                .border(1.dp, GreenPrimary, RoundedCornerShape(20.dp))
+                .clickable { onToggle() }
+                .padding(horizontal = 10.dp, vertical = 5.dp)
+        ) {
+            Icon(
+                imageVector = if (isCompleted) Icons.Filled.CheckCircle else Icons.Outlined.RadioButtonUnchecked,
+                contentDescription = "배출 완료",
+                tint = if (isCompleted) Color.White else GreenPrimary,
+                modifier = Modifier.size(14.dp)
+            )
+            Spacer(Modifier.width(4.dp))
+            Text(
+                if (isCompleted) "완료" else "배출 완료",
+                fontSize = 12.sp,
+                color = if (isCompleted) Color.White else GreenPrimary,
+                fontWeight = FontWeight.Medium
+            )
+        }
     }
 }
 
