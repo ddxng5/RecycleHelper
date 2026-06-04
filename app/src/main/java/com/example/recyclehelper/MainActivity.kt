@@ -23,7 +23,7 @@ class MainActivity : ComponentActivity() {
         NotificationHelper.ensureChannel(this)
         enableEdgeToEdge()
 
-        // 세션 확인 — 로그인 안 된 경우 LoginActivity로 전환
+        // 세션 확인 — 로그인 안된 경우 LoginActivity로 전환
         if (!UserSessionManager(this).isLoggedIn()) {
             startActivity(Intent(this, LoginActivity::class.java))
             finish()
