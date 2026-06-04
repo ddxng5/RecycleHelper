@@ -1,5 +1,6 @@
 package com.example.recyclehelper.ui.search
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -52,6 +53,8 @@ import com.example.recyclehelper.ui.theme.CardBackground
 import com.example.recyclehelper.ui.theme.GreenLight
 import com.example.recyclehelper.ui.theme.GreenPrimary
 import com.example.recyclehelper.ui.theme.TextPrimary
+import androidx.compose.ui.res.painterResource
+import com.example.recyclehelper.R
 import com.example.recyclehelper.ui.theme.TextSecondary
 
 @Composable
@@ -85,12 +88,20 @@ fun SearchScreen(
                     .padding(horizontal = 24.dp, vertical = 28.dp)
             ) {
                 Column {
-                    Text(
-                        text = "분리배출 도우미",
-                        color = Color.White,
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Image(
+                            painter = painterResource(R.drawable.ic_app_logo),
+                            contentDescription = null,
+                            modifier = Modifier.size(32.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = "분리배출 도우미",
+                            color = Color.White,
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                     Spacer(Modifier.height(4.dp))
                     Text(
                         text = "올바른 분리배출 방법과 지역별 배출 일정을 확인해요",
