@@ -2,6 +2,7 @@ package com.example.recyclehelper.data.prefs
 
 import android.content.Context
 import com.example.recyclehelper.data.model.DisposalRecord
+import com.example.recyclehelper.data.remote.dto.WasteItemDto
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 
@@ -99,6 +100,29 @@ class PrefsManager(context: Context, userId: String = "guest") {
         }
         set(value) { prefs.edit().putString(KEY_DISPOSAL, gson.toJson(value)).apply() }
 
+    // ─── Zone DTO 캐시 (시도+시군구별) ────────────────────────
+    private fun zoneItemsKey(city: String, district: String) = "${KEY_ZONE_ITEMS}_${city}_${district}"
+    private fun zoneItemsTsKey(city: String, district: String) = "${KEY_ZONE_ITEMS_TS}_${city}_${district}"
+
+    fun getCachedZoneItems(city: String, district: String): List<WasteItemDto> {
+        val json = prefs.getString(zoneItemsKey(city, district), null) ?: return emptyList()
+        return try {
+            val type = object : TypeToken<List<WasteItemDto>>() {}.type
+            gson.fromJson(json, type) ?: emptyList()
+        } catch (_: Exception) { emptyList() }
+    }
+
+    fun setCachedZoneItems(city: String, district: String, items: List<WasteItemDto>) {
+        prefs.edit().putString(zoneItemsKey(city, district), gson.toJson(items)).apply()
+    }
+
+    fun getZoneItemsCacheTimestamp(city: String, district: String): Long =
+        prefs.getLong(zoneItemsTsKey(city, district), 0L)
+
+    fun setZoneItemsCacheTimestamp(city: String, district: String, ts: Long) {
+        prefs.edit().putLong(zoneItemsTsKey(city, district), ts).apply()
+    }
+
     // ─── 월별 검색 횟수 ────────────────────────────────────────
     /** yearMonth = "2025-05" 형식으로 저장 */
     fun getMonthlySearchCount(yearMonth: String): Int =
@@ -120,6 +144,8 @@ class PrefsManager(context: Context, userId: String = "guest") {
         private const val KEY_REGIONS_CACHE_TS = "regions_cache_ts"
         private const val KEY_DISPOSAL         = "disposal_records"
         private const val KEY_SEARCH_COUNT     = "search_count_"
+        private const val KEY_ZONE_ITEMS       = "zone_items"
+        private const val KEY_ZONE_ITEMS_TS    = "zone_items_ts"
 
         private const val KEY_NOTIFY_HOUR      = "notify_hour"
         private const val KEY_NOTIFY_MINUTE    = "notify_minute"

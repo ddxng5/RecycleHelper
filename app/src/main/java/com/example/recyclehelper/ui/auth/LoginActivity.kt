@@ -62,10 +62,8 @@ class LoginActivity : ComponentActivity() {
         WasteItemStore.ensureLoaded(applicationContext)
         NotificationHelper.ensureChannel(this)
 
-        // 이미 로그인 상태면 바로 MainActivity로
-        if (UserSessionManager(this).isLoggedIn()) {
-            goToMain(); return
-        }
+        // 앱 시작 시 항상 로그인 화면을 보여주기 위해 세션 초기화
+        UserSessionManager(this).logout()
 
         setContent {
             RecycleHelperTheme {

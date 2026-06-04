@@ -8,54 +8,76 @@ import com.example.recyclehelper.data.model.ZoneInfo
 import android.util.Log
 import com.example.recyclehelper.data.remote.RetrofitClient
 import com.example.recyclehelper.data.remote.dto.WasteItemDto
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import java.time.DayOfWeek
+import kotlin.math.ceil
 
 class WasteRepository {
 
     private val api = RetrofitClient.wasteApi
 
-    /**
-     * 공공데이터 API 는 한 번 요청에 처리할 수 있는 건수 제한이 있다.
-     * 1,000건씩 페이지를 나눠 totalCount 에 도달할 때까지 전부 수집한다.
-     */
     private val PAGE_SIZE = 1_000
     private val TAG = "WasteRepository"
 
+    /**
+     * 1페이지를 먼저 가져와 totalCount를 확인한 뒤,
+     * 나머지 페이지를 모두 병렬로 요청해 반환한다.
+     */
+    private suspend fun fetchAllItems(
+        cityName: String? = null,
+        districtName: String? = null
+    ): List<WasteItemDto> = coroutineScope {
+        // 첫 페이지 (순차) — totalCount 확인
+        val firstResponse = api.getWasteInfo(
+            serviceKey   = BuildConfig.WASTE_API_KEY,
+            cityName     = cityName,
+            districtName = districtName,
+            pageNo       = 1,
+            numOfRows    = PAGE_SIZE
+        )
+        val header = firstResponse.response.header
+        val resultCode = header.resultCode.trimStart('0').ifEmpty { "0" }
+        if (resultCode != "0" && !header.resultMsg.contains("정상")) return@coroutineScope emptyList()
+
+        val body = firstResponse.response.body
+        val totalCount = body.totalCount
+        val page1Items = body.items?.item.orEmpty()
+        if (page1Items.isEmpty()) return@coroutineScope emptyList()
+
+        Log.d(TAG, "fetchAllItems[$cityName $districtName]: totalCount=$totalCount")
+
+        if (page1Items.size >= totalCount) return@coroutineScope page1Items
+
+        // 나머지 페이지 병렬 요청
+        val lastPage = ceil(totalCount.toDouble() / PAGE_SIZE).toInt()
+        val deferred = (2..lastPage).map { pageNo ->
+            async {
+                try {
+                    api.getWasteInfo(
+                        serviceKey   = BuildConfig.WASTE_API_KEY,
+                        cityName     = cityName,
+                        districtName = districtName,
+                        pageNo       = pageNo,
+                        numOfRows    = PAGE_SIZE
+                    ).response.body.items?.item.orEmpty()
+                } catch (e: Exception) {
+                    Log.e(TAG, "fetchAllItems page $pageNo failed", e)
+                    emptyList()
+                }
+            }
+        }
+
+        val result = page1Items.toMutableList()
+        deferred.awaitAll().forEach { result += it }
+        Log.d(TAG, "fetchAllItems[$cityName $districtName]: collected=${result.size}")
+        result
+    }
+
     suspend fun getAvailableRegions(): Map<String, List<String>> {
         return try {
-            val allItems = mutableListOf<WasteItemDto>()
-            var pageNo = 1
-            var totalCount = -1
-
-            while (true) {
-                val response = api.getWasteInfo(
-                    serviceKey = BuildConfig.WASTE_API_KEY,
-                    pageNo    = pageNo,
-                    numOfRows = PAGE_SIZE
-                )
-
-                val resultCode = response.response.header.resultCode.trimStart('0').ifEmpty { "0" }
-                val isSuccess  = resultCode == "0" ||
-                        response.response.header.resultMsg.contains("정상")
-                if (!isSuccess) break
-
-                // 첫 응답에서 전체 건수 확인
-                if (totalCount < 0) {
-                    totalCount = response.response.body.totalCount
-                    Log.d(TAG, "getAvailableRegions: totalCount=$totalCount")
-                }
-
-                val pageItems = response.response.body.items?.item.orEmpty()
-                if (pageItems.isEmpty()) break
-
-                allItems += pageItems
-                Log.d(TAG, "getAvailableRegions: page=$pageNo fetched=${pageItems.size} accumulated=${allItems.size}")
-
-                if (allItems.size >= totalCount) break
-                pageNo++
-            }
-
-            allItems
+            fetchAllItems()
                 .mapNotNull { item ->
                     val city     = item.ctpvNm?.trim().orEmpty()
                     val district = item.sggNm?.trim().orEmpty()
@@ -65,57 +87,43 @@ class WasteRepository {
                 .mapValues { (_, districts) -> districts.distinct().sorted() }
                 .toSortedMap()
                 .also { Log.d(TAG, "getAvailableRegions: cities=${it.keys}") }
-
         } catch (e: Exception) {
             Log.e(TAG, "getAvailableRegions failed", e)
             emptyMap()
         }
     }
 
-    suspend fun getZones(cityName: String, districtName: String): List<ZoneInfo> {
+    /** API에서 원시 DTO 목록을 가져온다. 캐시 전략은 호출자(ViewModel)가 담당한다. */
+    suspend fun fetchZoneItems(cityName: String, districtName: String): List<WasteItemDto> {
         return try {
-            val allItems = mutableListOf<WasteItemDto>()
-            var pageNo = 1
-            var totalCount = -1
+            fetchAllItems(cityName, districtName)
+        } catch (e: Exception) {
+            Log.e(TAG, "fetchZoneItems failed", e)
+            emptyList()
+        }
+    }
 
-            while (true) {
-                val response = api.getWasteInfo(
-                    serviceKey   = BuildConfig.WASTE_API_KEY,
-                    cityName     = cityName,
-                    districtName = districtName,
-                    pageNo       = pageNo,
-                    numOfRows    = PAGE_SIZE
-                )
-
-                val resultCode = response.response.header.resultCode.trimStart('0').ifEmpty { "0" }
-                val isSuccess  = resultCode == "0" ||
-                        response.response.header.resultMsg.contains("정상")
-                if (!isSuccess) break
-
-                if (totalCount < 0) {
-                    totalCount = response.response.body.totalCount
-                    Log.d(TAG, "getZones[$cityName $districtName]: totalCount=$totalCount")
-                }
-
-                val pageItems = response.response.body.items?.item.orEmpty()
-                if (pageItems.isEmpty()) break
-
-                allItems += pageItems
-                if (allItems.size >= totalCount) break
-                pageNo++
+    /** 원시 DTO 목록을 ZoneInfo 리스트로 변환한다 (네트워크 호출 없음, 즉시 반환). */
+    fun parseZones(
+        items: List<WasteItemDto>,
+        cityName: String,
+        districtName: String
+    ): List<ZoneInfo> =
+        items
+            .filter { item ->
+                item.ctpvNm.isSameRegionName(cityName) &&
+                item.sggNm.isSameRegionName(districtName)
+            }
+            .map { toZoneInfo(it, cityName, districtName) }
+            .distinctBy { zone ->
+                listOf(zone.regionName, zone.zoneName,
+                       zone.collectionType, zone.collectionPlace)
+                    .joinToString("|")
             }
 
-            allItems
-                .filter { item ->
-                    item.ctpvNm.isSameRegionName(cityName) &&
-                    item.sggNm.isSameRegionName(districtName)
-                }
-                .map { toZoneInfo(it, cityName, districtName) }
-                .distinctBy { zone ->
-                    listOf(zone.regionName, zone.zoneName,
-                           zone.collectionType, zone.collectionPlace)
-                        .joinToString("|")
-                }
+    suspend fun getZones(cityName: String, districtName: String): List<ZoneInfo> {
+        return try {
+            parseZones(fetchZoneItems(cityName, districtName), cityName, districtName)
         } catch (e: Exception) {
             Log.e(TAG, "getZones failed", e)
             emptyList()

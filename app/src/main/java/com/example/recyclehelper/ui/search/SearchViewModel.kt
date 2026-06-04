@@ -184,30 +184,73 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
         _uiState.value = _uiState.value.copy(notifyWasteTypes = current)
     }
 
-    /** 사용자가 요청한 시그니처. 내부적으로 getZones 를 호출한다. */
+    /** 사용자가 요청한 시그니처. 내부적으로 loadZones 를 호출한다. */
     fun loadRegionInfo(city: String, district: String) = loadZones(city, district)
 
+    /**
+     * Zone 로드 전략 (regions 캐시와 동일한 패턴):
+     *  1) SharedPreferences 캐시가 있으면 → 즉시 UI 반영 (스피너 없음)
+     *  2) 캐시가 없거나 24시간 이상 지났으면 → API 호출 (백그라운드)
+     *  3) API 결과가 오면 캐시 저장 후 UI 갱신
+     */
     fun loadZones(city: String, district: String) {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(
-                isLoading = true,
-                errorMessage = null,
-                zones = emptyList(),
-                selectedZoneIndex = 0
-            )
-            try {
-                val zones = repository.getZones(city, district)
+            // ── 1단계: 캐시 확인 ──────────────────────────────────
+            val cachedItems = prefs.getCachedZoneItems(city, district)
+            val cacheAge = System.currentTimeMillis() - prefs.getZoneItemsCacheTimestamp(city, district)
+            val cacheValid = cachedItems.isNotEmpty() && cacheAge < PrefsManager.CACHE_TTL_MS
+
+            if (cachedItems.isNotEmpty()) {
+                val cachedZones = repository.parseZones(cachedItems, city, district)
                 _uiState.value = _uiState.value.copy(
-                    zones = zones,
+                    zones = cachedZones,
                     selectedZoneIndex = 0,
                     isLoading = false,
-                    errorMessage = if (zones.isEmpty()) "해당 지역 데이터가 없습니다" else null
+                    errorMessage = if (cachedZones.isEmpty()) "해당 지역 데이터가 없습니다" else null
+                )
+            } else {
+                // 캐시 없음 — 스피너 표시
+                _uiState.value = _uiState.value.copy(
+                    isLoading = true,
+                    errorMessage = null,
+                    zones = emptyList(),
+                    selectedZoneIndex = 0
+                )
+            }
+
+            if (cacheValid) return@launch   // 캐시 유효 → API 호출 생략
+
+            // ── 2단계: API 호출 ────────────────────────────────────
+            try {
+                val freshItems = repository.fetchZoneItems(city, district)
+                if (freshItems.isEmpty()) {
+                    if (cachedItems.isEmpty()) {
+                        _uiState.value = _uiState.value.copy(
+                            isLoading = false,
+                            errorMessage = "해당 지역 데이터가 없습니다"
+                        )
+                    }
+                    return@launch
+                }
+
+                // ── 3단계: 캐시 저장 + UI 갱신 ────────────────────
+                prefs.setCachedZoneItems(city, district, freshItems)
+                prefs.setZoneItemsCacheTimestamp(city, district, System.currentTimeMillis())
+
+                val freshZones = repository.parseZones(freshItems, city, district)
+                _uiState.value = _uiState.value.copy(
+                    zones = freshZones,
+                    selectedZoneIndex = 0,
+                    isLoading = false,
+                    errorMessage = if (freshZones.isEmpty()) "해당 지역 데이터가 없습니다" else null
                 )
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    errorMessage = "데이터를 불러올 수 없어요"
-                )
+                if (cachedItems.isEmpty()) {
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        errorMessage = "데이터를 불러올 수 없어요"
+                    )
+                }
             }
         }
     }

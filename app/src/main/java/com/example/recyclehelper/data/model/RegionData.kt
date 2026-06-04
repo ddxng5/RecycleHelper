@@ -6,5 +6,5 @@ package com.example.recyclehelper.data.model
  */
 object RegionData {
     const val DEFAULT_CITY     = "서울특별시"
-    const val DEFAULT_DISTRICT = "강남구"
+    const val DEFAULT_DISTRICT = "성북구"
 }
