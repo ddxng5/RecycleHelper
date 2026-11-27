@@ -1,6 +1,7 @@
 # ♻️ 분리배출 도우미 (RecycleHelper)
 
-> 품목 검색으로 분리배출 방법을 알려주고, 우리 동네 수거 요일에 맞춰 알림을 보내는 안드로이드 앱
+> 품목 검색으로 분리배출 방법을 알려주고, 우리 동네 수거 요일에 맞춰 알림을 보내는 안드로이드 앱<br>
+> 2026-1학기 안드로이드 프로그래밍 개인 프로젝트 · 2026.05 – 2026.06
 
 ---
 
@@ -26,9 +27,15 @@
 
 * 품목명·키워드로 **분리배출 방법 검색** (로컬 품목 데이터 211개)
 * 행정안전부 **생활쓰레기배출정보 API**로 시/구별 수거 요일·시간 조회
-* 현재 요일 기준 **오늘 배출 가능한 쓰레기**와 주간 배출 일정 표시
+* 현재 요일 기준 **오늘 배출 가능한 쓰레기**와 월간 **배출 달력** 표시
 * 배출 전날·당일 **알림**과 월별 배출 기록 **통계**
 * 회원가입/로그인으로 **사용자별 즐겨찾기·설정 분리**
+
+<p align="center">
+  <img width="240" src="./docs/images/search.jpg" alt="품목 검색 화면">
+  <img width="240" src="./docs/images/today.jpg" alt="오늘 배출 화면">
+  <img width="240" src="./docs/images/calendar.jpg" alt="배출 달력 화면">
+</p>
 
 #### 3. 세부 개발 목표
 
@@ -59,16 +66,9 @@
 
 #### 2. 앱 구조
 
-```mermaid
-flowchart LR
-    UI["Compose 화면<br/>검색 · 오늘 · 일정 · 즐겨찾기 · 설정"] --> VM["SearchViewModel"]
-    VM --> Repo["WasteRepository"]
-    VM --> Prefs["PrefsManager<br/>캐시 24h · 사용자별 키"]
-    VM --> Store["WasteItemStore<br/>assets/waste_items.json"]
-    Repo --> API["Retrofit WasteApi<br/>생활쓰레기배출정보 API"]
-    Auth["Login / Register"] --> DB[("SQLite<br/>UserDatabase")]
-    Alarm["AlarmReceiver · BootReceiver"] --> Noti["NotificationHelper"]
-```
+<p align="center">
+  <img width="800" src="./docs/images/architecture.png" alt="분리배출 도우미 앱 구조도">
+</p>
 
 #### 3. 품목 검색 흐름
 
@@ -82,10 +82,16 @@ flowchart LR
 
 #### 4. 지역 수거 정보 조회 흐름
 
-1) 설정에서 시/구를 선택하면 먼저 SharedPreferences 캐시를 확인
-2) 캐시가 있으면 바로 화면에 표시하고, 24시간이 지나지 않았으면 API 호출을 생략
-3) 캐시가 없거나 만료되면 API 1페이지로 `totalCount`를 확인한 뒤, 나머지 페이지를 코루틴 `async` / `awaitAll`로 동시에 요청
-4) 응답의 배출 요일 문자열을 `DayOfWeek` 목록으로 파싱해 오늘 배출 탭과 주간 일정에 반영
+1) 지역 선택창에는 `getAvailableRegions()`로 API 데이터에 실제로 있는 시도/시군구 조합만 표시
+2) 시/구를 선택하면 먼저 SharedPreferences 캐시를 확인
+3) 캐시가 있으면 바로 화면에 표시하고, 24시간이 지나지 않았으면 API 호출을 생략
+4) 캐시가 없거나 만료되면 API 1페이지로 `totalCount`를 확인한 뒤, 나머지 페이지를 코루틴 `async` / `awaitAll`로 동시에 요청
+5) `월+수+금`, `월~금`, `매일`, `평일`처럼 형식이 제각각인 배출 요일 문자열을 `parseDayOfWeek()`로 `DayOfWeek` 목록으로 변환해 오늘 배출 탭과 달력에 반영
+
+> **API 연동 시 처리한 부분**
+> - 인증키가 이중 인코딩되지 않도록 `serviceKey`에 `@Query(encoded = true)` 적용, 키는 `local.properties` → `BuildConfig`로 주입
+> - `CTPV_NM`, `LF_WST_EMSN_DOW`처럼 대문자 스네이크 케이스인 응답 필드를 `@SerializedName`으로 DTO에 매핑
+> - `신사동+압구정동+논현1동`처럼 묶여 오는 관리 구역 값은 동마다 다른 데이터가 아니라 하나의 배출권역에 속한 동 목록으로 해석
 
 #### 5. 알림 흐름
 
@@ -103,7 +109,7 @@ flowchart LR
 | --- | --- |
 | **검색** | 품목 검색, 카테고리 필터, 최근 검색어, 지역 선택 |
 | **오늘** | 현재 요일 기준 배출 가능한 쓰레기 종류와 수거 시간 |
-| **일정** | 주간 배출 캘린더, 요일별 배출 완료 체크 |
+| **배출 달력** | 월간 달력으로 날짜별 배출 항목 확인, 배출 완료 기록 |
 | **즐겨찾기** | 별표로 저장한 품목 목록 (앱 재시작 후에도 유지) |
 | **설정** | 지역·알림 설정, 월별 통계, 로그아웃 |
 
@@ -158,6 +164,16 @@ flowchart LR
 | `INTERNET` | 공공 API 호출 |
 | `POST_NOTIFICATIONS` | Android 13 이상 알림 표시 |
 | `RECEIVE_BOOT_COMPLETED` | 재부팅 후 알림 재등록 |
+
+---
+
+## 📸 실행 화면
+
+| 로그인 | 회원가입 | 즐겨찾기 |
+| :---: | :---: | :---: |
+| <img width="220" src="./docs/images/login.jpg" alt="로그인"> | <img width="220" src="./docs/images/register.jpg" alt="회원가입"> | <img width="220" src="./docs/images/favorites.jpg" alt="즐겨찾기"> |
+| **지역 변경** | **알림 설정** | **환경 통계** |
+| <img width="220" src="./docs/images/region.jpg" alt="지역 변경"> | <img width="220" src="./docs/images/notification-settings.jpg" alt="알림 설정"> | <img width="220" src="./docs/images/stats.jpg" alt="환경 통계"> |
 
 ---
 
